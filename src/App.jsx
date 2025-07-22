@@ -5,7 +5,7 @@ import "./App.css";
 
 function App() {
   return (
-    <div className="d-flex vh-100">
+    <div className="d-flex">
       <Sidebar />
       <div className="flex-grow-1 p-3 bg-light">
         <Dashboard />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./styles.css";
 import bot from "../../images/bot.svg";
+import restFullChatService from "../../services/chatService";
 
 function ChatbotBubble() {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,16 +11,25 @@ function ChatbotBubble() {
 
   const toggleChat = () => setIsOpen((prev) => !prev);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!message.trim()) return;
+
+    // Add user message
     setMessages((prev) => [...prev, { from: "user", text: message }]);
-    setTimeout(() => {
+    const userMessage = message;
+    setMessage("");
+
+    try {
+      // Fetch bot reply from service
+      const botReply = await restFullChatService.fetchChatbotReply(userMessage);
+      setMessages((prev) => [...prev, { from: "bot", text: botReply }]);
+    } catch (error) {
+      console.error("Error fetching bot reply:", error);
       setMessages((prev) => [
         ...prev,
-        { from: "bot", text: `Echo: ${message}` },
+        { from: "bot", text: "Sorry, something went wrong." },
       ]);
-    }, 700);
-    setMessage("");
+    }
   };
 
   useEffect(() => {
