@@ -7,29 +7,64 @@ function ChatbotBubble() {
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
+  const [isStreaming, setIsStreaming] = useState(false);
   const chatBodyRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const toggleChat = () => setIsOpen((prev) => !prev);
 
   const handleSend = async () => {
     if (!message.trim()) return;
 
-    // Add user message
-    setMessages((prev) => [...prev, { from: "user", text: message }]);
     const userMessage = message;
+    setMessages((prev) => [
+      ...prev,
+      { from: "user", text: userMessage },
+      { from: "bot", text: "" },
+    ]);
     setMessage("");
 
+    const botIndex = messages.length + 1;
+    let botMessage = "";
+
+    setIsStreaming(true);
+    abortControllerRef.current = new AbortController();
+
     try {
-      // Fetch bot reply from service
-      const botReply = await restFullChatService.fetchChatbotReply(userMessage);
-      setMessages((prev) => [...prev, { from: "bot", text: botReply }]);
+      await restFullChatService.fetchChatbotReplyStream(
+        userMessage,
+        (chunk, fullText) => {
+          botMessage = fullText;
+          setMessages((prev) =>
+            prev.map((msg, idx) =>
+              idx === botIndex ? { from: "bot", text: botMessage } : msg
+            )
+          );
+        },
+        abortControllerRef.current.signal
+      );
     } catch (error) {
-      console.error("Error fetching bot reply:", error);
-      setMessages((prev) => [
-        ...prev,
-        { from: "bot", text: "Sorry, something went wrong." },
-      ]);
+      if (abortControllerRef.current.signal.aborted) {
+        setMessages((prev) =>
+          prev.map((msg, idx) =>
+            idx === botIndex ? { from: "bot", text: "Đã dừng trả lời." } : msg
+          )
+        );
+      } else {
+        setMessages((prev) =>
+          prev.map((msg, idx) =>
+            idx === botIndex ? { from: "bot", text: "Lỗi khi trả lời." } : msg
+          )
+        );
+      }
+    } finally {
+      setIsStreaming(false);
     }
+  };
+
+  const handleStopStreaming = () => {
+    abortControllerRef.current?.abort();
+    setIsStreaming(false);
   };
 
   useEffect(() => {
@@ -95,8 +130,31 @@ function ChatbotBubble() {
                     className={`message-bubble ${
                       msg.from === "user" ? "user-message" : "bot-message"
                     }`}
+                    style={{ whiteSpace: "pre-line" }}
                   >
-                    {msg.text}
+                    {msg.from === "bot" && msg.text.includes("\n") ? (
+                      <div>
+                        {msg.text.split("\n").map((line, idx) => {
+                          if (line.trim().startsWith("-")) {
+                            return (
+                              <div key={idx} style={{ marginBottom: "5px" }}>
+                                • {line.replace("-", "").trim()}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              line.trim() !== "" && (
+                                <div key={idx} style={{ marginBottom: "5px" }}>
+                                  {line.trim()}
+                                </div>
+                              )
+                            );
+                          }
+                        })}
+                      </div>
+                    ) : (
+                      <span>{msg.text}</span>
+                    )}
                   </div>
                 </div>
               ))
@@ -111,15 +169,27 @@ function ChatbotBubble() {
                 placeholder="Type your message..."
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && !isStreaming && handleSend()
+                }
+                disabled={isStreaming}
               />
-              <button
-                className="btn chatbot-send-btn"
-                onClick={handleSend}
-                disabled={!message.trim()}
-              >
-                <i className="bi bi-send-fill fs-4"></i>
-              </button>
+              {isStreaming ? (
+                <button
+                  className="btn btn-danger"
+                  onClick={handleStopStreaming}
+                >
+                  <i className="bi bi-pause-fill fs-4"></i>
+                </button>
+              ) : (
+                <button
+                  className="btn chatbot-send-btn"
+                  onClick={handleSend}
+                  disabled={!message.trim()}
+                >
+                  <i className="bi bi-send-fill fs-4"></i>
+                </button>
+              )}
             </div>
           </div>
         </div>
